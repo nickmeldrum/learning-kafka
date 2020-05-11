@@ -36,4 +36,3 @@ Use case example:
 
 ## Fundamentals
 
-
