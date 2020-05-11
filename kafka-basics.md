@@ -177,4 +177,108 @@ since 0.10 zookeeper does not store consumer offsets (instead in a kafka topic)
  * With a replicatoin factor of N, producers and consumers can tolerate up to N - 1 brokers being down (therefore 3 is a good idea)
  * The same key will always go to the same partition (As long as the number of partitions remains constant for a topic)
 
+## Kafka CLI
+
+### Installing:
+
+(Based on Java 8 + Kafka 2.52:)
+
+ 1. Download and unzip .tar from https://kafka.apache.org/downloads somewhere sensible
+ 2. Add `bin` dir to path
+
+### Running the server locally:
+
+ 1. Set data dirs in config files: `zookeeper.properties`, change `dataDir` and `server.properties` change `log.dirs` to where the data and logs will reside
+ 2. Start zookeeper: `zookeeper-server-start.sh config/zookeeper.properties`
+ 3. Start kafka: `kafka-server-start.sh config/server.properties`
+
+### Some CLI commands:
+
+#### Topics:
+
+ * Create a topic: `kafka-topics.sh --bootstrap-server localhost:9092 --topic test_topic --create` (will default partition count and replication_factor to cluster defaults (1 and 1))
+ * Create a topic specifying values: `kafka-topics.sh --bootstrap-server localhost:9092 --topic test_topic2 --create --partitions 3 --replication-factor 1` (will default partition count and replication_factor to cluster defaults (1 and 1))
+ * List topics: `kafka-topics.sh --bootstrap-server localhost:9092 --list`
+ * Describe topics (i.e. get partition/leader/IRS info): `kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic test_topic`
+ * Mark a topic for deletion: `kafka-topics.sh --bootstrap-server localhost:9092 --delete --topic test_topic`
+
+(TOP TIP: Create functions in your `.bash_profile` or equivalent to shorten/default this e.g.:)
+```
+k-topics() { kafka-topics.sh --bootstrap-server localhost:9092 "$@" ;}
+k-producer() { kafka-console-producer.sh --broker-list localhost:9092 "$@" ;}
+k-consumer() { kafka-console-consumer.sh --bootstrap-server localhost:9092 "$@" ;}
+k-consumer-groups() { kafka-consumer-groups.sh --bootstrap-server localhost:9092 "$@" ;}
+```
+
+#### Sending Data:
+
+Send 4 messages to a topic via the console:
+
+```
+~ ❯ kafka-console-producer.sh --broker-list 127.0.0.1:9092 --topic test_topic
+>hello world
+>BOOM HEADSHOT
+>omg no wai
+>4th message :)
+>^C%
+```
+
+Add properties to producer:
+```
+~ ❯ kafka-console-producer.sh --broker-list 127.0.0.1:9092 --topic test_topic --producer-property acks=all
+>hello world
+>^C%
+```
+
+Producing to a topic that doesn't exist - creates the topic. Wait for a leader to be elected and a message can be created...
+
+(will be created with default partitions / replication_factors - which can be changed in server.properties)
+
+#### Receiving Data:
+
+
+Start receiving new messages: (but note it won't read messages already sent)
+```
+~ ❯ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic test_topic
+```
+
+Receive all messages including ones already sent:
+```
+~ ❯ kafka-console-consumer.sh --bootstrap-server localhost:9092 --from-beginning --topic test_topic
+```
+
+#### Using Consumer groups
+
+If you create a consumer with a consumer group, it will always read FROM the committed offset (therefore --from-beginning doesn't do anything)
+
+To see load balancing in action:
+
+1. create a topic with 2 partitions:
+
+`k-topics --create test_groups_topic`
+
+2. run 2 consumers with the same consumer_group name (in 2 different console sessions):
+
+`k-consumer --topic test_groups_topic --group my_app`
+`k-consumer --topic test_groups_topic --group my_app`
+
+3. run 1 producer:
+
+`k-producer --topic test_groups_topic`
+
+And you will see each message sent round robined to the 2 consumers - yay :)
+
+```
+~ ❯ k-consumer-groups --describe --group my-app    
+
+Consumer group 'my-app' has no active members.
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+my-app          test_topic_2    1          0               1               1               -               -               -
+my-app          test_topic_2    2          3               6               3               -               -               -
+my-app          test_topic_2    0          3               4               1               -               -               -
+my-app          test_topic      0          27              27              0               -               -               -
+```
+
+Note: the my-app consumer group is "lagging" - there are more messages in topics the group has subscribed to than it has consumed.
 
